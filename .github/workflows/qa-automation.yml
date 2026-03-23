@@ -1,0 +1,123 @@
+name: QA Automation - Automated Testing CI/CD
+
+# Trigger on push and pull requests
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  # Job 1: Unit Tests (What QA should focus on)
+  unit-tests:
+    name: Run Unit Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      # Step 1: Checkout code
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # Step 2: Setup Node.js
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      # Step 3: Install dependencies
+      - name: Install dependencies
+        run: npm install
+
+      # Step 4: Run tests with coverage
+      - name: Run automated tests
+        run: npm test -- --coverage --testMatch="**/*.test.js"
+
+      # Step 5: Upload test results
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: test-results
+          path: coverage/
+
+  # Job 2: Test Report (Generate readable report for QA)
+  test-report:
+    name: Generate Test Report
+    runs-on: ubuntu-latest
+    needs: unit-tests
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Generate detailed test report
+        run: npm test -- --verbose --json --outputFile=test-report.json 2>&1 || true
+
+      - name: Display test summary
+        run: |
+          echo "✅ TEST EXECUTION SUMMARY"
+          echo "========================="
+          npm test 2>&1 | tail -20
+
+      - name: Upload test report
+        uses: actions/upload-artifact@v3
+        with:
+          name: test-report
+          path: test-report.json
+
+  # Job 3: Code Quality Check
+  code-quality:
+    name: Code Quality Analysis
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Check for syntax errors
+        run: node -c src/index.js
+
+      - name: Count test coverage
+        run: npm test -- --coverage --silent 2>&1 | grep -E "Statements|Branches|Functions|Lines" || echo "Tests completed"
+
+  # Job 4: Notification (For QA team)
+  notify-qa:
+    name: QA Notification
+    runs-on: ubuntu-latest
+    needs: [unit-tests, test-report]
+    if: always()
+
+    steps:
+      - name: Check test status
+        run: |
+          if [ "${{ needs.unit-tests.result }}" == "success" ]; then
+            echo "✅ All tests PASSED - Ready for QA review"
+          else
+            echo "❌ Tests FAILED - QA review needed"
+          fi
+
+      - name: Print QA instructions
+        run: |
+          echo "📋 QA TEAM - AUTOMATED TEST RESULTS"
+          echo "===================================="
+          echo "1. Download test artifacts from 'Artifacts' section"
+          echo "2. Review test-results/ for coverage report"
+          echo "3. Review test-report.json for detailed test execution"
+          echo "4. Verify all test cases passed"
+          echo "5. Check code quality metrics"
